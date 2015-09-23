@@ -152,8 +152,6 @@ function Set-FileContent
 }
 
 
-
-if ($MyInvocation.InvocationName -ne ".") {
-
+if (-not ($myinvocation.line.Contains("`$here\`$sut"))) {
     Set-AssemblyVersion -SourceDirectory $SourceDirectory -BuildNumber $BuildNumber -VersionFormat $VersionFormat
 }
