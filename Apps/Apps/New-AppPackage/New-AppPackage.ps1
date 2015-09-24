@@ -7,6 +7,27 @@
 .EXAMPLE
    New-AppPackage -SourceDirectory $Env:TF_BUILD_SOURCESDIRECTORY -BinariesDirectory $Env:TF_BUILD_BINARIESDIRECTORY
 #>
+Param
+(
+    # The source directory
+    [Parameter(Mandatory=$false, Position=0)]
+    [string]$SourceDirectory = $Env:TF_BUILD_SOURCESDIRECTORY,
+
+    #The binaries directory
+    [Parameter(Mandatory=$false, Position=1)]
+    [string]$BinariesDirectory = $Env:TF_BUILD_BINARIESDIRECTORY
+)
+
+
+<#
+.Synopsis
+   Script that copies the app package to the drop folder.
+.DESCRIPTION
+   This script van be used in a TFS build definition to ensure that an app is created and published to the build folder.
+   You must use the script together with the build parameters /p:IsPackaging=True
+.EXAMPLE
+   New-AppPackage -SourceDirectory $Env:TF_BUILD_SOURCESDIRECTORY -BinariesDirectory $Env:TF_BUILD_BINARIESDIRECTORY
+#>
 function New-AppPackage
 {
     [CmdletBinding()]
@@ -32,6 +53,8 @@ function New-AppPackage
             md $BinariesDirectory
             Write-Warning "The directory '$BinariesDirectory' did not exist and was created."
         }
+
+        [int]$result = 0
     }
     Process
     {
@@ -42,9 +65,10 @@ function New-AppPackage
         $SourceSubFolders = $("*app.publish*")
 
         # Find the files
-        $files = gci $SourceDirectory -recurse -include $SourceSubFolders | 
-        ?{ $_.PSIsContainer } | 
-        foreach { gci -Path $_.FullName -Recurse -include $FileTypes }
+        $folders = Get-ChildItem $SourceDirectory -Recurse -Include $SourceSubFolders -Directory
+        $files = $folders | foreach { Get-ChildItem -Path $_.FullName -Recurse -include $FileTypes }
+
+        
 
         if($files)
         {
@@ -53,6 +77,7 @@ function New-AppPackage
             foreach ($file in $files) {
                 Write-Verbose $file.FullName 
                 Copy-Item $file $BinariesDirectory
+                $result++
             }
         }
         else
@@ -62,6 +87,10 @@ function New-AppPackage
     }
     End
     {
-        return 0
+        return $result
     }
+}
+
+if (-not $MyInvocation.Line.Contains("`$here\`$sut")){
+    New-AppPackage -SourceDirectory $SourceDirectory -BinariesDirectory $BinariesDirectory
 }
