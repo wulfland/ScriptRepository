@@ -8,6 +8,33 @@
 .EXAMPLE
    Install-SPAddIn -AppPackageFullName C:\MyCustomAppPackage.app -TargetWebFullUrl @("http://localhost/sites/a", "http://localhost/sites/b")
 #>
+[CmdletBinding(SupportsShouldProcess=$true)]
+Param
+(
+    # The full name of the app package (i.e. 'C:\temp\MyCustomAppPackage.app')
+    [Parameter(Mandatory=$true, ValueFromPipelineByPropertyName=$true, Position=0)]
+    [string]$AppPackageFullName,
+
+    # The urls of the webs youwant to deploy the app to.
+    [Parameter(Mandatory=$true, ValueFromPipelineByPropertyName=$true, Position=1)]
+    [string[]]$TargetWebFullUrl,
+
+    # The package source
+    [Parameter(Mandatory=$false, Position=2)]
+    [ValidateSet("ObjectModel", "Marketplace", "CorporateCatalog", "DeveloperSite", "RemoteObjectModel")]
+    [string]$PackageSource = "ObjectModel"
+)
+
+<#
+.Synopsis
+   Installs a SharePoint AddIn A.K.A. SharePoint App to one or more specific sites.
+.DESCRIPTION
+   This function installs a SharePoint AddIn A.K.A. SharePoint App to one or more specific sites.
+.EXAMPLE
+   Install-SPAddIn -AppPackageFullName C:\MyCustomAppPackage.app -TargetWebFullUrl http://localhost
+.EXAMPLE
+   Install-SPAddIn -AppPackageFullName C:\MyCustomAppPackage.app -TargetWebFullUrl @("http://localhost/sites/a", "http://localhost/sites/b")
+#>
 function Install-SPAddIn 
 {
     [CmdletBinding(SupportsShouldProcess=$true)]
@@ -70,18 +97,23 @@ function Install-SPAddInInternal
 
     if ($PSCmdlet.ShouldProcess("$webUrl", "Import-SPAppPackage"))
     {
-        $spapp = Import-SPAppPackage -Path "$AppPackageFullName" -Site $webUrl -Source $sourceApp -Confirm:$false -ErrorAction Continue
+        $spapp = Import-SPAppPackage -Path "$AppPackageFullName" -Site $webUrl -Source $sourceApp -Confirm:$false -ErrorAction Stop
     }
 
     $appId = [Guid]::Empty;
 
     if ($PSCmdlet.ShouldProcess("$webUrl", "Install-SPApp"))
     {
-        $app = Install-SPApp -Web $Web -Identity $spapp -Confirm:$false -ErrorAction Continue
+        $app = Install-SPApp -Web $WebUrl -Identity $spapp -Confirm:$false -ErrorAction Stop
         $appId = $app.Id
     }
 
-    $status = WaitFor-InstallJob -AppInstanceId $appId
+    if ($PSCmdlet.ShouldProcess("$webUrl", "Trust-SPAddIn"))
+    {
+        Trust-SPAddIn -AppInstanceId $appId -WebUrl $webUrl   
+    }
+
+    $status = WaitFor-InstallJob -AppInstanceId $appId -WebUrl $webUrl
 
     if ($status -ne [Microsoft.SharePoint.Administration.SPAppInstanceStatus]::Installed)
     {
@@ -99,16 +131,88 @@ function Install-SPAddInInternal
     return $result
 }
 
+function Trust-SPAddIn
+{
+    [CmdletBinding(SupportsShouldProcess=$true)]
+    [OutputType([int])]
+    Param
+    (
+        [Parameter(Mandatory=$true, Position=0)]
+        [guid]$AppInstanceId,
+
+        [Parameter(Mandatory=$true, Position=1)]
+        [string]$WebUrl
+    )
+
+    $authorizeURL = "$($WebUrl.TrimEnd('/'))/_layouts/15/appinv.aspx?AppInstanceId={$AppInstanceId}"
+
+    Write-Message -message $authorizeURL
+
+    $oIE = New-Object -com internetexplorer.application
+
+     try
+     {
+         $oIE.visible=$true
+         $oIE.navigate2($authorizeURL)
+
+         sleep -Seconds 1
+         while ($oIE.busy) {
+            sleep -milliseconds 50
+         }
+
+         Write-Verbose "Loaded Page: $($oIE.Document.Title)"
+
+         sleep -seconds 5
+
+         $button = $oIE.Document.getElementById("ctl00_PlaceHolderMain_BtnAllow")
+         if ($button -eq $null)
+         {
+            Write-Error "Could not find button to press"
+            Write-Error $oIE.Document.documentElement.outerText
+         }
+         else
+         {
+             $button.click()
+ 
+             sleep -Seconds 1
+     
+             while ($oIE.busy) {
+                sleep -milliseconds 50
+             }
+
+             Write-Verbose "Now we're on page: $($oIE.Document.Title) - $($oIE.LocationURL)"
+
+             #if the button press was successful, we should now be on the Site Settings page.. 
+             if ($oIE.Document.title -like "*trust*")
+             {
+                Write-Error "Error: " $oIE.Document.body.getElementsByClassName("ms-error").item().InnerText
+                throw ("Error Trusting App:" + $oIE.Document.body.getElementsByClassName("ms-error").item().InnerText)
+             }
+             else
+             {
+                Write-Verbose "App was trusted successfully!"
+             }
+         }
+     }
+     finally
+     {
+        $oIE.Quit()
+     } 
+}
+
 function WaitFor-InstallJob
 {
     [CmdletBinding()]
     param
     (
-        [guid]
-        $AppInstanceId
+        [guid]$AppInstanceId,
+
+        [string]$WebUrl
     )
 
-    $AppInstance = Get-AppInstance -id $AppInstanceId
+    $site = Get-ParentSite -webUrl $WebUrl
+
+    $AppInstance = Get-AppInstance -id $AppInstanceId -site $site
 
     Write-Verbose "Waiting for app..."
     
@@ -127,7 +231,7 @@ function WaitFor-InstallJob
 
         start-sleep -s $sleepTime
 
-        $AppInstance = Get-AppInstance -id $AppInstanceId
+        $AppInstance = Get-AppInstance -id $AppInstanceId -site $site
     }
 
     Write-Progress -Activity "Install app" -Completed
@@ -138,9 +242,23 @@ function WaitFor-InstallJob
 
 function Get-AppInstance
 {
-    param([guid]$id)
+    param([guid]$id, $site)
 
-    return Get-SPAppInstance -AppInstanceId $id
+    return Get-SPAppInstance -AppInstanceId $id -Site $site
+}
+
+function Get-ParentSite
+{
+    param([string]$webUrl)
+
+    return (Get-SPWeb $WebUrl).Site
+}
+
+function Write-Message
+{
+    param([string]$message)
+
+    Write-Verbose $message
 }
 
 function Ensure-PSSnapin
@@ -159,4 +277,8 @@ function Release-PSSnapin
         Remove-PSSnapin "Microsoft.SharePoint.PowerShell" -Verbose:$false | Out-Null
         Write-Verbose "SharePoint Powershell Snapin removed."
     } 
+}
+
+if (-not $MyInvocation.Line.Contains("`$here\`$sut")){
+    Install-SPAddIn -AppPackageFullName $AppPackageFullName -TargetWebFullUrl $TargetWebFullUrl -PackageSource $PackageSource
 }

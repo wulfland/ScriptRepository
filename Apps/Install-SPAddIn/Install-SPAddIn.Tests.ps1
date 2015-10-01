@@ -1,24 +1,24 @@
 ﻿$here = Split-Path -Parent $MyInvocation.MyCommand.Path
 $sut = (Split-Path -Leaf $MyInvocation.MyCommand.Path).Replace(".Tests.", ".")
-. "$here\$sut"
+. "$here\$sut" -AppPackageFullName "lala" -TargetWebFullUrl "http://localhost"
 
 Describe "Install-SPAddIn" {
-    context "The app package does not exist" {
-        It "Throws an excpetion" {
+    context "Given the app package does not exist, it" {
+        It "throws an excpetion" {
             { Install-SPAddIn -AppPackageFullName "C:\lala.app" -TargetWebFullUrl http://localhost } | Should throw "The package 'C:\lala.app' does not exit."
         }
     }
 
-    context "The app package does exist" {
+    context "Given the app package does exist, it" {
         In $TestDrive {
             Setup -File ".\lala.app"
             Mock Install-SPAddInInternal {  } -Verifiable
 
-            It "Does not throw an exception" {
+            It "does not throw an exception, and" {
                 { Install-SPAddIn -AppPackageFullName ".\lala.app" -TargetWebFullUrl http://localhost } | Should not throw
             }
 
-            It "Installes package in all sites"{
+            It "installes the package in all sites."{
                 Install-SPAddIn -AppPackageFullName ".\lala.app" -TargetWebFullUrl @("http://localhost/sites/a", "http://localhost/sites/b")    
             
                 Assert-MockCalled Install-SPAddInInternal -Times 2     
@@ -28,71 +28,106 @@ Describe "Install-SPAddIn" {
 }
 
 Describe "Install-SPAddInInternal"{
-    context "The app cannot be installed" {
+    context "Given the app cannot be installed, it" {
         Mock WaitFor-InstallJob { return 'Error' }
 
         $actual = Install-SPAddInInternal -AppPackageFullName "C:\lala.app" -webUrl http://localhost -sourceApp "ObjectModel" -Whatif -erroraction silentlycontinue
 
-        It "Does write an error"{
+        It "does return one, and"{
             $actual | should be 1
         }
     }
 
-    context "The app is installed" {
+    context "the app is installed, and it" {
         Mock WaitFor-InstallJob { return 'Installed' }
 
         $actual = Install-SPAddInInternal -AppPackageFullName "C:\lala.app" -webUrl http://localhost -sourceApp "ObjectModel" -Whatif
 
-        It "Does write an error"{
+        It "returns zero."{
             $actual | should be 0
         }
     }
 }
 
-Describe "WaitFor-InstallJob" {
-    context "The package cannot be installed"{
+Describe "Trust-SPAddIn"{
 
+    context "Given a web URL, it"{
+
+        Mock Write-Message { } -Verifiable
+        Mock New-Object { 
+            $doc = [PSCustomObject]@{ }
+            $doc | Add-Member -MemberType ScriptMethod getElementById  { 
+                param($id)
+
+                $btn = [PSCustomObject]@{ }
+                $btn | Add-Member -MemberType ScriptMethod -Name click -Value { } 
+
+                return $btn
+            }
+
+            $obj = [PSCustomObject]@{ visible = $false; busy = $false; Document = $doc }  
+            $obj | Add-Member -MemberType ScriptMethod -Name navigate2 -Value { }
+            $obj | Add-Member -MemberType ScriptMethod -Name Quit -Value { }
+            
+            return $obj
+        }
+
+        $id = [Guid]::NewGuid()
+        $actual = Trust-SPAddIn -WebUrl "http://server/sites/web/subsite/" -AppInstanceId $id -verbose 
+
+        It "constructs the correct trust url."{
+            Assert-MockCalled Write-Message -ParameterFilter { $message -like "http://server/sites/web/subsite/_layouts/15/appinv.aspx?AppInstanceId={$id}"  } 
+        }
+    }
+}
+
+Describe "WaitFor-InstallJob" {
+
+    Mock Get-ParentSite { } 
+
+    context "Given the package cannot be installed, it"{
+        
         Mock Get-AppInstance { return [PSCustomObject]@{ Status = 'Error' } }
 
-        $result = WaitFor-InstallJob -AppInstanceId ([guid]::NewGuid())
+        $result = WaitFor-InstallJob -AppInstanceId ([guid]::NewGuid()) -WebUrl "http://localhost"
 
-        It "Returns the state" {
+        It "returns the state returned from SharePoint." {
             $result | Should be "Error"
         }
     }
 
-    context "The package cannot be installed in timeout period"{
+    context "Given the package cannot be installed in timeout period, it"{
 
         Mock Get-AppInstance { return [PSCustomObject]@{ Status = 'Installing' } } -Verifiable
 
-        $result = WaitFor-InstallJob -AppInstanceId ([guid]::NewGuid())
+        $result = WaitFor-InstallJob -AppInstanceId ([guid]::NewGuid()) -WebUrl "http://localhost"
 
-        It "Returns the state" {
-            $result | Should be "Installing"
+        It "requeries the status 5 times, and" {
+            Assert-MockCalled Get-AppInstance -Times 5
         }
 
-        It "Requeries status 5 times" {
-            Assert-MockCalled Get-AppInstance -Times 5
+        It "returns the state from SharePoint." {
+            $result | Should be "Installing"
         }
     }
 
-    context "The package was installed immediattly"{
+    context "Given the package was installed immediattly, it"{
 
         Mock Get-AppInstance { return [PSCustomObject]@{ Status = 'Installed' } } -Verifiable
 
-        $result = WaitFor-InstallJob -AppInstanceId ([guid]::NewGuid())
+        $result = WaitFor-InstallJob -AppInstanceId ([guid]::NewGuid()) -WebUrl "http://localhost"
 
-        It "Returns the state 'Installed'" {
-            $result | Should be "Installed"
+        It "queries the app 1 time, and" {
+            Assert-MockCalled Get-AppInstance -Times 1
         }
 
-        It "App queried 1 time" {
-            Assert-MockCalled Get-AppInstance -Times 1
+        It "returns the state 'Installed'." {
+            $result | Should be "Installed"
         }
     }
 
 
-    context "The package was installed after 6 seconds" {
+    context "Given the package was installed after 6 seconds, it" {
 
         $Global:iteration = 0
 
@@ -104,16 +139,14 @@ Describe "WaitFor-InstallJob" {
                 return [PSCustomObject]@{ Status = 'Installed' } 
             } } -Verifiable
 
-        $result = WaitFor-InstallJob -AppInstanceId ([guid]::NewGuid())
+        $result = WaitFor-InstallJob -AppInstanceId ([guid]::NewGuid()) -WebUrl "http://localhost"
 
-        It "Returns the state 'Installed'" {
-            $result | Should be "Installed"
-        }
-
-
-        It "Requeries app 3 times" {
+        It "queries the app 3 times, and" {
             Assert-MockCalled Get-AppInstance -Times 3
         }
 
+        It "returns the state 'Installed'." {
+            $result | Should be "Installed"
+        }
     }
 }
