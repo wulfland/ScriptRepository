@@ -100,17 +100,18 @@ function Install-SPAddInInternal
         $spapp = Import-SPAppPackage -Path "$AppPackageFullName" -Site $webUrl -Source $sourceApp -Confirm:$false -ErrorAction Stop
     }
 
+    if ($PSCmdlet.ShouldProcess("$webUrl", "Trust-SPAddIn"))
+    {
+        $clientId = Get-ClientIdFromAppPackage $AppPackageFullName
+        Trust-SPAddIn -ClientId $clientId -WebUrl $webUrl   
+    }
+
     $appId = [Guid]::Empty;
 
     if ($PSCmdlet.ShouldProcess("$webUrl", "Install-SPApp"))
     {
         $app = Install-SPApp -Web $WebUrl -Identity $spapp -Confirm:$false -ErrorAction Stop
         $appId = $app.Id
-    }
-
-    if ($PSCmdlet.ShouldProcess("$webUrl", "Trust-SPAddIn"))
-    {
-        Trust-SPAddIn -AppInstanceId $appId -WebUrl $webUrl   
     }
 
     $status = WaitFor-InstallJob -AppInstanceId $appId -WebUrl $webUrl
@@ -138,66 +139,19 @@ function Trust-SPAddIn
     Param
     (
         [Parameter(Mandatory=$true, Position=0)]
-        [guid]$AppInstanceId,
+        [guid]$ClientID,
 
         [Parameter(Mandatory=$true, Position=1)]
         [string]$WebUrl
     )
 
-    $authorizeURL = "$($WebUrl.TrimEnd('/'))/_layouts/15/appinv.aspx?AppInstanceId={$AppInstanceId}"
+    $authRealm = Get-SPAuthenticationRealm -ServiceContext $WebUrl
 
-    Write-Message -message $authorizeURL
+    $appIdentifier = $clientID.ToString() + "@" + $authRealm
 
-    $oIE = New-Object -com internetexplorer.application
+    $appPrincipal = Get-SPAppPrincipal -Site $WebUrl -NameIdentifier $appIdentifier
 
-     try
-     {
-         $oIE.visible=$true
-         $oIE.navigate2($authorizeURL)
-
-         sleep -Seconds 1
-         while ($oIE.busy) {
-            sleep -milliseconds 50
-         }
-
-         Write-Verbose "Loaded Page: $($oIE.Document.Title)"
-
-         sleep -seconds 5
-
-         $button = $oIE.Document.getElementById("ctl00_PlaceHolderMain_BtnAllow")
-         if ($button -eq $null)
-         {
-            Write-Error "Could not find button to press"
-            Write-Error $oIE.Document.documentElement.outerText
-         }
-         else
-         {
-             $button.click()
- 
-             sleep -Seconds 1
-     
-             while ($oIE.busy) {
-                sleep -milliseconds 50
-             }
-
-             Write-Verbose "Now we're on page: $($oIE.Document.Title) - $($oIE.LocationURL)"
-
-             #if the button press was successful, we should now be on the Site Settings page.. 
-             if ($oIE.Document.title -like "*trust*")
-             {
-                Write-Error "Error: " $oIE.Document.body.getElementsByClassName("ms-error").item().InnerText
-                throw ("Error Trusting App:" + $oIE.Document.body.getElementsByClassName("ms-error").item().InnerText)
-             }
-             else
-             {
-                Write-Verbose "App was trusted successfully!"
-             }
-         }
-     }
-     finally
-     {
-        $oIE.Quit()
-     } 
+    Set-SPAppPrincipalPermission -Site $WebUrl -AppPrincipal $appPrincipal -Scope Site -Right FullControl
 }
 
 function WaitFor-InstallJob
@@ -222,7 +176,7 @@ function WaitFor-InstallJob
 
     start-sleep -s $sleepTime
 
-    while(($AppInstance.Status -eq [Microsoft.SharePoint.Administration.SPAppInstanceStatus]::Installing) -and ($i -le $max))
+    while((($AppInstance.Status -eq [Microsoft.SharePoint.Administration.SPAppInstanceStatus]::Installing) -or ($AppInstance.Status -eq [Microsoft.SharePoint.Administration.SPAppInstanceStatus]::Initialized)) -and ($i -le $max))
     {
         [int]$complete = ($i / $max) * 100
         Write-Progress -Activity "Install app..." -Status "$($complete)% completed" -PercentComplete $complete
@@ -245,6 +199,36 @@ function Get-AppInstance
     param([guid]$id, $site)
 
     return Get-SPAppInstance -AppInstanceId $id -Site $site
+}
+
+function Get-ClientIdFromAppPackage
+{
+    [CmdletBinding()]
+    [OutputType([guid])]
+    param([string]$Path)
+
+    $folder = [System.IO.Path]::GetDirectoryName($Path)
+    $tempFolder = "$folder\_tmp"
+
+    mkdir (Join-Path $folder "_tmp") | Out-Null
+
+    try{
+
+        $tempZipFile = "$tempFolder\app.zip"
+        Copy-Item $Path $tempZipFile
+
+        $shell   = New-Object -Com Shell.Application 
+        $zipItem = $shell.NameSpace($tempZipFile) 
+        $appManifest   = $zipItem.Items() | Where-Object -Property Name -EQ -Value AppManifest.xml
+        $shell.NameSpace("$folder\_tmp").CopyHere($appManifest) 
+
+        [xml]$xml = Get-Content "$folder\_tmp\AppManifest.xml"
+
+        return $xml.App.AppPrincipal.RemoteWebApplication.ClientId
+
+    }finally{
+        Remove-Item "$folder\_tmp" -Force -Recurse
+    }
 }
 
 function Get-ParentSite

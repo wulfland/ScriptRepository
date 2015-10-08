@@ -33,50 +33,18 @@ Describe "Install-SPAddInInternal"{
 
         $actual = Install-SPAddInInternal -AppPackageFullName "C:\lala.app" -webUrl http://localhost -sourceApp "ObjectModel" -Whatif -erroraction silentlycontinue
 
-        It "does return one, and"{
+        It "does return one."{
             $actual | should be 1
         }
     }
 
-    context "the app is installed, and it" {
+    context "Given the app is installed, it" {
         Mock WaitFor-InstallJob { return 'Installed' }
 
         $actual = Install-SPAddInInternal -AppPackageFullName "C:\lala.app" -webUrl http://localhost -sourceApp "ObjectModel" -Whatif
 
         It "returns zero."{
             $actual | should be 0
-        }
-    }
-}
-
-Describe "Trust-SPAddIn"{
-
-    context "Given a web URL, it"{
-
-        Mock Write-Message { } -Verifiable
-        Mock New-Object { 
-            $doc = [PSCustomObject]@{ }
-            $doc | Add-Member -MemberType ScriptMethod getElementById  { 
-                param($id)
-
-                $btn = [PSCustomObject]@{ }
-                $btn | Add-Member -MemberType ScriptMethod -Name click -Value { } 
-
-                return $btn
-            }
-
-            $obj = [PSCustomObject]@{ visible = $false; busy = $false; Document = $doc }  
-            $obj | Add-Member -MemberType ScriptMethod -Name navigate2 -Value { }
-            $obj | Add-Member -MemberType ScriptMethod -Name Quit -Value { }
-            
-            return $obj
-        }
-
-        $id = [Guid]::NewGuid()
-        $actual = Trust-SPAddIn -WebUrl "http://server/sites/web/subsite/" -AppInstanceId $id -verbose 
-
-        It "constructs the correct trust url."{
-            Assert-MockCalled Write-Message -ParameterFilter { $message -like "http://server/sites/web/subsite/_layouts/15/appinv.aspx?AppInstanceId={$id}"  } 
         }
     }
 }
