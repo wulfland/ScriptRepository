@@ -33,6 +33,9 @@
     <Compile Include="Set-AssemblyVersion\Set-AssemblyVersion.ps1" />
     <Compile Include="Set-AssemblyVersion\Set-AssemblyVersion.Tests.ps1" />
   </ItemGroup>
+  <ItemGroup>
+    <Content Include="README.md" />
+  </ItemGroup>
   <Import Project="$(MSBuildBinPath)\Microsoft.CSharp.targets" />
   <Target Name="Build" />
 </Project>

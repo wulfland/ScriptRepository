@@ -12,14 +12,14 @@
 [OutputType([int])]
 Param (
         # The name of the release definition
-        [Parameter(Mandatory=$false, Position=0)]
+        [Parameter(Mandatory=$true, Position=0)]
         [ValidateNotNullOrEmpty()]
-        [string]$ReleaseDefinition = "VisitorManagement_Dev",
+        [string]$ReleaseDefinition,
 
         # The name of the release path
-        [Parameter(Mandatory=$false, Position=1)]
+        [Parameter(Mandatory=$true, Position=1)]
         [ValidateNotNullOrEmpty()]
-        [string]$ReleasePathName = "VisitorManagement_Dev",
+        [string]$ReleasePathName,
 
         # The build number. This is automatically set by the build.
         [Parameter(Mandatory=$false, Position=2)]
@@ -37,7 +37,8 @@ Param (
         [string]$ApiVersion = "6.0"
 )
 
-$serverName = "tfs.hugoboss.com:1000"
+# Set the name of your release management server and the port (default 1000)
+$serverName = "<your server fqdn>:1000"
 $releaseManagementService = "http://$serverName/account/releaseManagementService/_apis/releaseManagement"
     
 # Get the ReleasePathId 
