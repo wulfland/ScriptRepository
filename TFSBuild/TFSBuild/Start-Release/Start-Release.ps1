@@ -50,7 +50,7 @@ $releasePath = Invoke-RestMethod "$releaseManagementService/ConfigurationService
 $stages = $releasePath.ReleasePath.Stages.Stage
 
 if ($TargetStage -ne "Last") {
-    $targetStageId = $stages | ? { $_.StageTypeName -eq "Dev" } | % { $_.Id }
+    $targetStageId = $stages | ? { $_.StageTypeName -eq $TargetStage } | % { $_.Id }
 }else {
     $targetStageId = $stages | Select-Object -Last 1 | % { $_.Id }
 }
