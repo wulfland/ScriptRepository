@@ -30,7 +30,11 @@ Param
     # The build number. Default $Env:BUILD_BUILDNUMBER is set by TFS and must be configured according your regex.
     [Parameter(Mandatory=$false, Position=2)]
     [ValidateNotNullOrEmpty()]
-    [string]$VersionFormat = "\d+\.\d+\.\d+\.\d+"
+    [string]$VersionFormat = "\d+\.\d+\.\d+\.\d+",
+
+    # Set the version number also in all AppManifest.xml files.
+    [Parameter(Mandatory=$false)]
+    [switch]$SetAppVersion
 )
 
 <#
@@ -66,7 +70,11 @@ function Set-AssemblyVersion
         # The build number. Default $Env:BUILD_BUILDNUMBER is set by TFS and must be configured according your regex.
         [Parameter(Mandatory=$false, Position=2)]
         [ValidateNotNullOrEmpty()]
-        [string]$VersionFormat = "\d+\.\d+\.\d+\.\d+"
+        [string]$VersionFormat = "\d+\.\d+\.\d+\.\d+",
+
+        # Set the version number also in all AppManifest.xml files.
+        [Parameter(Mandatory=$false)]
+        [switch]$SetAppVersion
     )
 
     if (-not (Test-Path $SourceDirectory)) {
@@ -78,6 +86,12 @@ function Set-AssemblyVersion
     $files = Get-Files -SourceDirectory $SourceDirectory
 
     Set-FileContent -Files $files -Version $Version -VersionFormat $VersionFormat
+
+    if ($SetAppVersion.IsPresent)
+    {
+        $files = Get-AppManifest -SourceDirectory $SourceDirectory
+        Set-AppManifest -Files $files -Version $Version
+    }
 }
 
 function Get-Version
@@ -122,6 +136,21 @@ function Get-Files
     return $folders | ForEach-Object { Get-ChildItem -Path $_.FullName -Recurse -include AssemblyInfo.* }
 }
 
+function Get-AppManifest
+{
+    [CmdletBinding()]
+    [Alias()]
+    [OutputType([System.IO.FileSystemInfo[]])]
+    Param
+    (
+        [Parameter(Mandatory=$true, Position=0)]
+        [ValidateNotNullOrEmpty()]
+        [string]$SourceDirectory
+    )
+
+    return Get-ChildItem -Path $SourceDirectory -Recurse -Filter "AppManifest.xml"
+}
+
 function Set-FileContent
 {
     [CmdletBinding(SupportsShouldProcess=$true, ConfirmImpact='Medium')]
@@ -147,6 +176,31 @@ function Set-FileContent
             attrib $file -r
             $filecontent -replace $VersionFormat, $Version | Out-File $file
             Write-Verbose -Message "Applied Version '$Version' $($file.FullName) - version applied"
+        }
+    }
+}
+
+function Set-AppManifest
+{
+    [CmdletBinding(SupportsShouldProcess=$true, ConfirmImpact='Medium')]
+    [OutputType([int])]
+    Param
+    (
+        [Parameter(Mandatory=$true, Position=0)]
+        [System.IO.FileSystemInfo[]]$Files,
+
+        [Parameter(Mandatory=$true, Position=1)]
+        [string]$Version
+    )
+
+    foreach ($file in $Files)
+    {
+        [xml]$xml = Get-Content $file
+
+        $xml.App.Version = $Version
+
+        if ($PSCmdlet.ShouldProcess("$file", "Set-AppManifest")){
+            $xml.Save($file.FullName)
         }
     }
 }

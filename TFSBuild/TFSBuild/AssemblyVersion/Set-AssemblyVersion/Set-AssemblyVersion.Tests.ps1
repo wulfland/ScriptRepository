@@ -23,6 +23,20 @@ Describe "Set-AssemblyVersion" {
 
         It "sets the version to the extracted verion of the build number"{
             $content | should match "[assembly: AssemblyVersion(""1.0.20150922.01"")]"
+        }  
+    }
+
+    context "Given the SourceDirectory does exit, it"{
+        setup -File "SourceDir\Properties\AssemblyInfo.cs" -Content "[assembly: AssemblyVersion(""1.0.0.0"")]"
+        Mock Get-AppManifest { return Get-Item "$TestDrive\SourceDir\Properties\AssemblyInfo.cs" } -Verifiable
+        Mock Set-AppManifest -Verifiable
+
+        Set-AssemblyVersion -SourceDirectory "$TestDrive\SourceDir" -BuildNumber "Dev_1.0.20150922.01" -SetAppVersion
+
+        It "sets the version for apps, if switch is present"{
+
+            Assert-MockCalled Get-AppManifest -Times 1
+            Assert-MockCalled Set-AppManifest -Times 1
         }
     }
 }
@@ -105,7 +119,9 @@ Describe "Set-FileContent"{
     
         setup -File "SourceDir\AssemblyInfo.cs" -Content "//comment`r`n[assembly: AssemblyVersion(""1.0.0.0"")]`r`n[assembly: AssemblyFileVersion(""1.0.0.0"")]`r`n"
 
-        Set-FileContent (gci "$TestDrive\SourceDir") "15.88.99.17" "\d+\.\d+\.\d+\.\d+"
+        $file = Get-Item "$TestDrive\SourceDir\AssemblyInfo.cs"
+
+        Set-FileContent $file "15.88.99.17" "\d+\.\d+\.\d+\.\d+"
 
         $content = Get-Content "$TestDrive\SourceDir\AssemblyInfo.cs"
 
@@ -118,3 +134,58 @@ Describe "Set-FileContent"{
         }
     }
 }
+
+Describe "Get-AppManifest"{
+    
+    context "Given two apps in different subfolders, it"{
+        
+        setup -File "SourceDir\SolutionDir\Subfolder1\Project1\AppManifest.xml"
+        setup -File "SourceDir\SolutionDir\Sub1\Sub2\Project2\AppManifest.xml"
+
+        $actual = Get-AppManifest -SourceDir $TestDrive\SourceDir
+
+        It "returns two app manifest files"{
+            $actual | should not BeNullOrEmpty
+            $actual.Count | should be 2
+        }
+    }
+}
+
+Describe "Set-AppManifest"{
+
+    context "Given an app manifest file, it"{
+    
+        $content = "<?xml version=""1.0"" encoding=""utf-8"" ?>
+        <App xmlns=""http://schemas.microsoft.com/sharepoint/2012/app/manifest""
+             Name=""CalculatorApp""
+             ProductID=""{bb8717bf-67df-4d78-bc46-5f98c380fd8b}""
+             Version=""1.1.0.0""
+             SharePointMinVersion=""16.0.0.0""
+        >
+          <Properties>
+            <Title>CalculatorApp</Title>
+            <StartPage>~remoteAppUrl/?{StandardTokens}</StartPage>
+          </Properties>
+
+          <AppPrincipal>
+            <RemoteWebApplication ClientId=""*"" />
+          </AppPrincipal>
+          <AppPermissionRequests>
+            <AppPermissionRequest Scope=""http://sharepoint/content/sitecollection/web"" Right=""Read"" />
+          </AppPermissionRequests>
+        </App>"
+
+        setup -File "SourceDir\AppManifest.xml" -Content $content 
+
+        $file = Get-Item "$TestDrive\SourceDir\AppManifest.xml"
+
+        Set-AppManifest $file "9.9.9.9"
+
+        [xml]$result = Get-Content $file
+
+        It "sets the version attribute to the desired value."{
+            $result.App.Version | should be "9.9.9.9"
+        }
+    }
+}
+
