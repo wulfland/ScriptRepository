@@ -29,8 +29,16 @@
   <ItemGroup>
     <Folder Include="Install-SPAddIn\" />
     <Folder Include="New-AppPackage\" />
+    <Folder Include="Build\" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="Build\Deploy-SPApp.ps1" />
+    <Compile Include="Build\Deploy-SPApp.Tests.ps1" />
+    <Compile Include="Build\Deploy-WebSite.ps1" />
+    <Compile Include="Build\Replace-Tokens.ps1" />
+    <Compile Include="Build\Set-AssemblyVersion.ps1" />
+    <Compile Include="Build\Set-AssemblyVersion.Tests.ps1" />
+    <Compile Include="Build\Trust-SPApp.ps1" />
     <Compile Include="Install-SPAddIn\Install-SPAddIn.ps1" />
     <Compile Include="Install-SPAddIn\Install-SPAddIn.Tests.ps1" />
     <Compile Include="New-AppPackage\New-AppPackage.ps1" />
