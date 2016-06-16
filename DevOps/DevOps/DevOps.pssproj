@@ -29,6 +29,8 @@
   <ItemGroup>
     <Compile Include="Backup-Database.ps1" />
     <Compile Include="Backup-Website.ps1" />
+    <Compile Include="Get-TFSRelease.ps1" />
+    <Compile Include="Get-VSTSRelease.ps1" />
     <Compile Include="Restore-Website.ps1" />
   </ItemGroup>
   <Import Project="$(MSBuildBinPath)\Microsoft.CSharp.targets" />
