@@ -1,14 +1,15 @@
 ﻿<#
 .Synopsis
-   Updates a variable in all release definitions.
+   Updates a variable with a given value in all release definitions.
 .DESCRIPTION
-   
+   If you have specific values (like server names or certificate thumbprints) in a lot of release definitions, you may need to update them at once.
+   The script iterates all projects and checks for a value and replaces it. 
+
+   Use -whatif to test without updating the values.
 .EXAMPLE
-   
+   Update-ReleaseVariables.ps1 -AccountName <vstsaccountname> -Accesstoken <PAT token> -VariableName <name of variable> -OldValues <value to look for> -NewValues <new value to set> -Verbose -WhatIf
 .EXAMPLE
-   
-.EXAMPLE
-   
+   Update-ReleaseVariables.ps1 -AccountName <vstsaccountname> -Accesstoken <PAT token> -VariableName <name of variable> -OldValues @("old1", "old2") -NewValues @("new1", "new2") -Verbose -WhatIf  
 #>
 [CmdletBinding(SupportsShouldProcess=$true)]
 Param
